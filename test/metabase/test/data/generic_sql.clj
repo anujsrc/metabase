@@ -1,6 +1,7 @@
 (ns metabase.test.data.generic-sql
   "Common functionality for various Generic SQL dataset loaders."
   (:require [clojure.java.jdbc :as jdbc]
+            [clojure.string :as s]
             [clojure.tools.logging :as log]
             (korma [core :as k]
                    [db :as kdb])
@@ -158,19 +159,20 @@
                                                v)))))))))
 
 (defn default-execute-sql! [loader context dbdef sql]
-  (when (seq sql)
-    (try
-      (jdbc/execute! (database->spec loader context dbdef) [sql] :transaction? false, :multi? true)
-      (catch java.sql.SQLException e
-        (println "Error executing SQL:" sql)
-        (println (format "Caught SQLException:\n%s"
-                         (with-out-str (jdbc/print-sql-exception-chain e))))
-        (throw e))
-      (catch Throwable e
-        (println "Error executing SQL:" sql)
-        (println (format "Caught Exception: %s %s\n%s" (class e) (.getMessage e)
-                         (with-out-str (.printStackTrace e))))
-        (throw e)))))
+  (let [sql (s/trim sql)]
+    (when (seq sql)
+      (try
+        (jdbc/execute! (database->spec loader context dbdef) [sql] :transaction? false, :multi? true)
+        (catch java.sql.SQLException e
+          (println "Error executing SQL:" sql)
+          (println (format "Caught SQLException:\n%s"
+                           (with-out-str (jdbc/print-sql-exception-chain e))))
+          (throw e))
+        (catch Throwable e
+          (println "Error executing SQL:" sql)
+          (println (format "Caught Exception: %s %s\n%s" (class e) (.getMessage e)
+                           (with-out-str (.printStackTrace e))))
+          (throw e))))))
 
 
 (def DefaultsMixin
@@ -193,10 +195,31 @@
 
 ;; ## ------------------------------------------------------------ IDatasetLoader impl ------------------------------------------------------------
 
+(defn- execute-sql*
+  "Execute multiple SQL statements. Filter out empty ones and combine them into a single string.
+   TODO - We should expose this somehow so MySQL doesn't need to reverse its behavior."
+  [loader context dbdef statements]
+  (let [sql (->> (filter identity statements)
+                 (map s/trim)
+                 (map (u/rpartial s/replace #";+$" ""))
+                 (filter seq)
+                 (interpose ";\n")
+                 (apply str))]
+    (when (seq sql)
+      (execute-sql! loader context dbdef sql))))
+
+(defn sequentially-execute-sql!
+  "Alternative implementation of `execute-sql!` that executes statements one at a time for drivers
+   that don't support executing multiple statements at once."
+  [loader context dbdef sql]
+    (doseq [statement (map s/trim (s/split sql #";+"))]
+      (when (seq statement)
+        (default-execute-sql! loader context dbdef statement))))
+
 (defn- create-db! [loader {:keys [table-definitions], :as dbdef}]
   ;; Exec SQL for creating the DB
-  (execute-sql! loader :server dbdef (str (drop-db-if-exists-sql loader dbdef) ";\n"
-                                          (create-db-sql loader dbdef)))
+  (execute-sql* loader :server dbdef [(drop-db-if-exists-sql loader dbdef)
+                                      (create-db-sql loader dbdef)])
 
   ;; Build combined statement for creating tables + FKs
   (let [statements (atom [])]
@@ -213,7 +236,7 @@
           (swap! statements conj (add-fk-sql loader dbdef tabledef fielddef)))))
 
     ;; exec the combined statement
-    (execute-sql! loader :db dbdef (apply str (interpose ";\n" @statements))))
+    (execute-sql* loader :db dbdef @statements))
 
   ;; Now load the data for each Table
   (doseq [tabledef table-definitions]
@@ -222,7 +245,7 @@
 (defn- destroy-db! [loader dbdef]
   (execute-sql! loader :server dbdef (drop-db-if-exists-sql loader dbdef)))
 
-(def ^:const IDatasetLoaderMixin
+(def IDatasetLoaderMixin
   "Mixin for `IGenericSQLDatasetLoader` types to implemnt `create-db!` and `destroy-db!` from `IDatasetLoader`."
   {:create-db!  create-db!
    :destroy-db! destroy-db!})

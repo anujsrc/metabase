@@ -10,8 +10,7 @@
             (metabase.models [database :refer [Database]]
                              [field :refer [Field] :as field]
                              [table :refer [Table]])
-            (metabase.test.data [data :as data]
-                                [datasets :as datasets :refer [*dataset*]]
+            (metabase.test.data [datasets :as datasets :refer [*dataset*]]
                                 [h2 :as h2]
                                 [interface :refer :all])
             [metabase.util :as u])

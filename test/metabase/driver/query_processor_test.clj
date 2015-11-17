@@ -21,7 +21,7 @@
 ;; ### Helper Fns + Macros
 
 (def ^:private ^:const sql-engines
-  #{:h2 :postgres :mysql :sqlserver})
+  #{:h2 :postgres :mysql :sqlserver :sqlite})
 
 (defmacro ^:private qp-expect-with-all-datasets [data q-form & post-process-fns]
   `(datasets/expect-with-all-datasets

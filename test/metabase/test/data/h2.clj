@@ -1,7 +1,6 @@
 (ns metabase.test.data.h2
   "Code for creating / destroying an H2 database from a `DatabaseDefinition`."
-  (:require [clojure.core.reducers :as r]
-            [clojure.string :as s]
+  (:require [clojure.string :as s]
             (korma [core :as k]
                    [db :as kdb])
             (metabase.test.data [generic-sql :as generic]
@@ -20,9 +19,6 @@
    :TimeField       "TIME"})
 
 ;; ## DatabaseDefinition helper functions
-
-(def ^:private ^:dynamic *dbdef*
-  nil)
 
 (defn- database->connection-details
   [_ context {:keys [short-lived?], :as dbdef}]
@@ -91,6 +87,3 @@
   (merge generic/IDatasetLoaderMixin
          {:database->connection-details database->connection-details
           :engine                       (constantly :h2)}))
-
-(defn dataset-loader []
-  (->H2DatasetLoader))
